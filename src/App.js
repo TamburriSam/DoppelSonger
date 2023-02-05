@@ -2,6 +2,7 @@ import React from "react";
 import "./App.css";
 import { useEffect, useState } from "react";
 import axios from "axios";
+import "react-dropdown/style.css";
 
 function App() {
   const CLIENT_ID = "3f3fdd849d4e4264a9ab4ac9cffa8599";
@@ -14,19 +15,21 @@ function App() {
   const [songKey, setSongKey] = useState("");
   const [secondSongKey, setsecondSongKey] = useState("");
 
-  const [track, setTrack] = useState([]);
   const [trackId, setTrackId] = useState([]);
-
   const [artistId, setArtistId] = useState([]);
 
   const [dataPack, setDataPack] = useState([]);
   const [audioFeatures, setAudioFeatures] = useState([]);
+
   const [artistKey, setArtistKey] = useState("");
   const [secondArtistKey, setSecondArtistKey] = useState("");
 
   const [danceAverage, setDanceAverage] = useState("");
+  const [danceAvgCounter, setDanceAvgCounter] = useState(0);
 
   const [recommendedChoices, setRecommendedChoices] = useState([]);
+
+  const [genres, setGenres] = useState([]);
 
   //fetch to our api
   // we will use this for saving resources to our database
@@ -63,39 +66,14 @@ function App() {
   const main = async (e) => {
     e.preventDefault();
 
+    setTrackId(() => []);
+    setArtistId(() => []);
+    setDataPack(() => []);
+    setAudioFeatures(() => []);
+
     await searchTracks(songKey, artistKey);
     await searchTracks(secondSongKey, secondArtistKey);
-    getCalculation();
   };
-
-  //main only triggers the first two searchTracks
-  //wee sett a use effect on track id and artist id. oncce their length is > 1, activate getAudioFeatures;
-
-  useEffect(() => {
-    if (artistId.length > 1 && trackId.length > 1) {
-      const getAudioFeatures = async (track) => {
-        console.log("Track Id: ", trackId);
-        const { data } = await axios.get(
-          `https://api.spotify.com/v1/audio-features/${track}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        const listItems = Object.entries(data).map((item) => (
-          <li>{item.join(" : ")}</li>
-        ));
-
-        setDataPack((dataPack) => [...dataPack, data]);
-        setAudioFeatures((audioFeatures) => [...audioFeatures, listItems]);
-      };
-
-      getAudioFeatures(trackId[0]);
-      getAudioFeatures([trackId[1]]);
-    }
-  }, [artistId]);
 
   const searchTracks = async (song, artist) => {
     const { data } = await axios.get("https://api.spotify.com/v1/search", {
@@ -118,48 +96,98 @@ function App() {
     console.log("matchedTrack", matchedTrack);
 
     setTrackId((trackId) => [...trackId, matchedTrack.id]);
-    console.log("trackid", matchedTrack.id);
     setArtistId((artistId) => [...artistId, matchedTrack.artists[0].id]);
   };
 
+  //main only triggers the first two searchTracks
+  //wee sett a use effect on track id and artist id. oncce their length is > 1, activate getAudioFeatures;
+
+  useEffect(() => {
+    if (artistId.length > 1 && trackId.length > 1) {
+      const getAudioFeatures = async (track) => {
+        console.log("Track Id: ", trackId);
+        const { data } = await axios.get(
+          `https://api.spotify.com/v1/audio-features/${track}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        let listItems = Object.entries(data).map((item) => (
+          <li>{item.join(" : ")}</li>
+        ));
+
+        setDataPack((dataPack) => [...dataPack, data]);
+        setAudioFeatures((audioFeatures) => [...audioFeatures, listItems]);
+      };
+
+      getAudioFeatures(trackId[0]);
+      getAudioFeatures([trackId[1]]);
+    }
+  }, [artistId]);
+
+  useEffect(() => {
+    if (dataPack.length > 1 && audioFeatures.length > 1) {
+      getCalculation();
+    }
+  }, [dataPack]);
+
   const getCalculation = async () => {
-    let danceAcc = 0;
+    let acc = 0;
 
     dataPack.map((song) => {
-      danceAcc += song.danceability;
+      acc += song.danceability;
     });
 
-    console.log("datapac", dataPack);
-
-    setDanceAverage(danceAcc / dataPack.length);
-    await getRecommendation();
+    setDanceAverage(acc / dataPack.length);
+    setDanceAvgCounter(acc++);
   };
 
-  const getRecommendation = async () => {
-    const { data } = await axios.get(
-      "https://api.spotify.com/v1/recommendations",
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        params: {
-          seed_artists: [artistId[0], artistId[1]],
-          seed_genres: "rock,pop",
-          seed_tracks: [trackId[0], trackId[1]],
-          target_danceability: danceAverage,
-        },
-      }
-    );
-    console.log("Recommendations", data);
+  useEffect(() => {
+    if (danceAvgCounter > 1) {
+      const getRecommendation = async () => {
+        const { data } = await axios.get(
+          "https://api.spotify.com/v1/recommendations",
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+            params: {
+              seed_artists: [artistId[0], artistId[1]],
+              seed_genres: "rock,pop",
+              seed_tracks: [trackId[0], trackId[1]],
+              target_danceability: danceAverage,
+            },
+          }
+        );
+        console.log("Recommendations", data);
 
-    const listItems = data.tracks.map((item) => (
-      <li>
-        {item.artists[0].name} : {item.name}
-      </li>
-    ));
+        const listItems = data.tracks.map((item) => (
+          <li>
+            {item.artists[0].name} : {item.name}
+          </li>
+        ));
 
-    setRecommendedChoices(listItems);
-  };
+        setRecommendedChoices(listItems);
+      };
+
+      getRecommendation();
+    }
+  }, [danceAvgCounter]);
+
+  useEffect(() => {
+    axios
+      .get("/genreSeeds.json")
+      .then((res) => {
+        setGenres(res.data);
+        console.log("res", res.data);
+      })
+      .catch((err) => console.log(err));
+  }, []);
+
+
 
   //Logout
   const logout = () => {
@@ -172,14 +200,13 @@ function App() {
       <header className='App-header'>
         <h1>DoppelSönger</h1>
         <h3>
-          Type in the name of two songs to algorithmically find a vibe thats
-          in-between those two songs.
+          Get a spliced vibe.
         </h3>
 
         {token ? (
           <form onSubmit={main}>
             <div style={{ display: "flex" }}>
-              <div>
+              <div id='first-block'>
                 <h4>First Song Choice</h4>
                 <input
                   type='text'
@@ -191,10 +218,11 @@ function App() {
                   placeholder='Artist Choice'
                   onChange={(e) => setArtistKey(e.target.value)}
                 />
-                <ul style={{ fontSize: "12px" }}>{audioFeatures[0]}</ul>
+               
+                ;<ul style={{ fontSize: "12px" }}>{audioFeatures[0]}</ul>
               </div>
 
-              <div>
+              <div id='second-block'>
                 <h4>Second Song Choice</h4>
                 <input
                   type='text'
@@ -214,6 +242,9 @@ function App() {
         ) : (
           <h2>Please login</h2>
         )}
+
+        {/* The ability to add another song to the average "vibe" */}
+        <button>Add Tile (Coming Soon)</button>
 
         <div>
           <h5>We Recommend You Listen To: </h5>
