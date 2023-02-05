@@ -26,6 +26,7 @@ function App() {
 
   const [danceAverage, setDanceAverage] = useState("");
 
+  const [recommendedChoices, setRecommendedChoices] = useState([]);
 
   //fetch to our api
   // we will use this for saving resources to our database
@@ -60,16 +61,41 @@ function App() {
   //await returns a promise, we dig the value from that proxy and reveal it on the client
 
   const main = async (e) => {
-    
     e.preventDefault();
-    
 
     await searchTracks(songKey, artistKey);
     await searchTracks(secondSongKey, secondArtistKey);
-    await getAudioFeatures(trackId[0]);
-    await getAudioFeatures(trackId[1]);
     getCalculation();
   };
+
+  //main only triggers the first two searchTracks
+  //wee sett a use effect on track id and artist id. oncce their length is > 1, activate getAudioFeatures;
+
+  useEffect(() => {
+    if (artistId.length > 1 && trackId.length > 1) {
+      const getAudioFeatures = async (track) => {
+        console.log("Track Id: ", trackId);
+        const { data } = await axios.get(
+          `https://api.spotify.com/v1/audio-features/${track}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        const listItems = Object.entries(data).map((item) => (
+          <li>{item.join(" : ")}</li>
+        ));
+
+        setDataPack((dataPack) => [...dataPack, data]);
+        setAudioFeatures((audioFeatures) => [...audioFeatures, listItems]);
+      };
+
+      getAudioFeatures(trackId[0]);
+      getAudioFeatures([trackId[1]]);
+    }
+  }, [artistId]);
 
   const searchTracks = async (song, artist) => {
     const { data } = await axios.get("https://api.spotify.com/v1/search", {
@@ -91,45 +117,24 @@ function App() {
 
     console.log("matchedTrack", matchedTrack);
 
-    setTrack((track) => [...track, matchedTrack])
     setTrackId((trackId) => [...trackId, matchedTrack.id]);
+    console.log("trackid", matchedTrack.id);
     setArtistId((artistId) => [...artistId, matchedTrack.artists[0].id]);
-
-  };
-
-  const getAudioFeatures = async (track) => {
-    console.log("Track Id: ", trackId);
-    const { data } = await axios.get(
-      `https://api.spotify.com/v1/audio-features/${track}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-
-    const listItems = Object.entries(data).map((item) => (
-      <li>{item.join(" : ")}</li>
-    ));
-
-    setDataPack((dataPack) => [...dataPack, data]);
-    setAudioFeatures((audioFeatures) => [...audioFeatures, listItems]);
   };
 
   const getCalculation = async () => {
     let danceAcc = 0;
-      
+
     dataPack.map((song) => {
-      danceAcc += (song.danceability)
+      danceAcc += song.danceability;
     });
 
-    console.log('datapac',dataPack)
+    console.log("datapac", dataPack);
 
-    setDanceAverage(danceAcc/dataPack.length);
+    setDanceAverage(danceAcc / dataPack.length);
     await getRecommendation();
   };
 
- 
   const getRecommendation = async () => {
     const { data } = await axios.get(
       "https://api.spotify.com/v1/recommendations",
@@ -138,17 +143,22 @@ function App() {
           Authorization: `Bearer ${token}`,
         },
         params: {
-          seed_artists: [artistId[0],artistId[1]],
+          seed_artists: [artistId[0], artistId[1]],
           seed_genres: "rock,pop",
-          seed_tracks: [trackId[0],trackId[1]],
-          target_danceability: danceAverage
+          seed_tracks: [trackId[0], trackId[1]],
+          target_danceability: danceAverage,
         },
       }
     );
     console.log("Recommendations", data);
 
+    const listItems = data.tracks.map((item) => (
+      <li>
+        {item.artists[0].name} : {item.name}
+      </li>
+    ));
 
-
+    setRecommendedChoices(listItems);
   };
 
   //Logout
@@ -162,8 +172,8 @@ function App() {
       <header className='App-header'>
         <h1>DoppelSönger</h1>
         <h3>
-          Type in the name of two songs to algorithmically find a similar new
-          song.
+          Type in the name of two songs to algorithmically find a vibe thats
+          in-between those two songs.
         </h3>
 
         {token ? (
@@ -204,6 +214,11 @@ function App() {
         ) : (
           <h2>Please login</h2>
         )}
+
+        <div>
+          <h5>We Recommend You Listen To: </h5>
+          {recommendedChoices}
+        </div>
 
         {!token ? (
           <a
